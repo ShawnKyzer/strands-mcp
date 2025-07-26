@@ -1,0 +1,24 @@
+# Web scraping
+requests==2.31.0
+beautifulsoup4==4.12.2
+lxml==4.9.3
+
+# Elasticsearch
+elasticsearch==8.11.1
+
+# MCP Server
+mcp==1.0.0
+pydantic>=2.8.0
+
+# Async support
+aiohttp==3.9.1
+asyncio-throttle==1.0.2
+
+# Utilities
+python-dotenv==1.0.0
+structlog==23.2.0
+tenacity==8.2.3
+
+# Development
+pytest==7.4.3
+pytest-asyncio==0.21.1

@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "strands-agents-docs": {
+      "command": "python",
+      "args": [
+        "-u", "mcp_server/main.py"
+      ],
+      "cwd": "/home/shawn/projects/strands-mcp",
+      "env": {
+        "ELASTICSEARCH_URL": "http://localhost:9200"
+      }
+    }
+  }
+}
