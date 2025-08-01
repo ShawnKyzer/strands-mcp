@@ -244,15 +244,21 @@ class StrandsDocsScraper:
                         'level': len(link.find_parents('ul'))
                     })
         
+        # Debug logging to see what navigation sections we found
+        logger.info("Navigation sections found", count=len(nav_sections), nav_sections=[ns['title'] for ns in nav_sections[:30]])  # First 30 only
+        logger.debug("All navigation sections", nav_sections=nav_sections)  # Full list in debug
+        
         return nav_sections
     
     def extract_comprehensive_sections(self, soup, nav_sections):
-        """Extract comprehensive sections based on content structure."""
+        """Extract comprehensive sections based on content structure and navigation."""
         sections = []
         
         # Find all major headings (h1, h2, h3)
         headings = soup.find_all(['h1', 'h2', 'h3'])
+        logger.info("Headings found in content", count=len(headings), headings=[h.get_text().strip() for h in headings[:10]])
         
+        # First, extract sections based on headings (existing approach)
         for i, heading in enumerate(headings):
             heading_text = heading.get_text().strip()
             if not heading_text or len(heading_text) < 2:
@@ -300,7 +306,7 @@ class StrandsDocsScraper:
             content = ' '.join(content_parts)
             
             if content and len(content) > 50:
-                sections.append({
+                section_data = {
                     'title': heading_text,
                     'content': content,
                     'section': section,
@@ -308,10 +314,16 @@ class StrandsDocsScraper:
                     'headers': headers,
                     'code_blocks': code_blocks,
                     'id': heading.get('id', heading_text.lower().replace(' ', '-'))
-                })
+                }
+                sections.append(section_data)
+                logger.debug("Created section from heading", title=heading_text, content_length=len(content))
         
         # Also extract content blocks that might not have clear headings
         self.extract_additional_content_blocks(soup, sections)
+        
+        # NEW: Extract sections based on navigation structure
+        nav_based_sections = self.extract_navigation_based_sections(soup, nav_sections)
+        sections.extend(nav_based_sections)
         
         return sections
     
@@ -383,19 +395,144 @@ class StrandsDocsScraper:
                         'code_blocks': [],
                         'id': f"additional-{len(existing_sections)}"
                     })
+    
+    def extract_navigation_based_sections(self, soup, nav_sections):
+        """Extract sections based on navigation structure by finding corresponding content elements."""
+        nav_sections_created = []
+        
+        # Create a mapping of navigation titles to potential content sections
+        logger.debug("Extracting navigation-based sections", nav_sections_count=len(nav_sections))
+        
+        # For each navigation section, try to find corresponding content
+        for i, nav_section in enumerate(nav_sections):
+            title = nav_section['title']
+            href = nav_section['href']
+            
+            # Skip version links and other non-content navigation
+            if any(skip_word in title.lower() for skip_word in ['0.', '1.']):
+                logger.debug("Skipping version link", title=title)
+                continue
+            
+            logger.debug("Processing navigation section", index=i, title=title, href=href)
+            
+            # Try to find content based on the href anchor
+            content_elem = None
+            if href and href.startswith('#'):
+                # Look for element with matching id
+                element_id = href[1:]  # Remove the #
+                content_elem = soup.find(id=element_id)
+                if content_elem:
+                    logger.debug("Found content by ID", title=title, id=element_id)
+                else:
+                    logger.debug("No content found by ID", title=title, id=element_id)
+            else:
+                logger.debug("No href or href doesn't start with #", title=title, href=href)
+            
+            # If no content found by ID, try other approaches
+            if not content_elem:
+                logger.debug("Trying text matching for", title=title)
+                # Look for elements with text matching the navigation title
+                # This is a simplified approach - in a real implementation, you might want
+                # to be more sophisticated about matching
+                for heading in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']):
+                    heading_text = heading.get_text().strip()
+                    if title.lower() in heading_text.lower() or heading_text.lower() in title.lower():
+                        content_elem = heading
+                        logger.debug("Found content by text match", title=title, heading_text=heading_text)
+                        break
+                if not content_elem:
+                    logger.debug("No content found by text matching", title=title)
+            
+            # If we found a content element, extract its content
+            if content_elem:
+                logger.debug("Found content element, extracting content", title=title, element_name=content_elem.name)
+                # Extract content starting from this element
+                content_parts = []
+                headers = [title]
+                code_blocks = []
+                
+                # Start with the element itself
+                current = content_elem
+                content_length = 0
+                
+                # Extract content until we hit a sibling heading of same or higher level
+                while current and content_length < 5000:  # Limit content size
+                    if hasattr(current, 'name'):
+                        # Stop at next heading of same or higher level
+                        if current.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+                            current_level = int(current.name[1]) if current.name[1].isdigit() else 6
+                            nav_level = int(content_elem.name[1]) if content_elem.name[1].isdigit() else 1
+                            if current != content_elem and current_level <= nav_level:
+                                logger.debug("Stopping at heading", current_name=current.name, current_level=current_level, nav_level=nav_level)
+                                break
+                        
+                        # Collect content
+                        if current.name in ['p', 'div', 'ul', 'ol', 'pre', 'code', 'blockquote', 'h4', 'h5', 'h6']:
+                            text = current.get_text().strip()
+                            if text:
+                                content_parts.append(text)
+                                content_length += len(text)
+                                
+                                # Collect headers and code blocks
+                                if current.name in ['h4', 'h5', 'h6']:
+                                    headers.append(text)
+                                elif current.name in ['pre', 'code'] and len(text) > 10:
+                                    code_blocks.append(text)
+                    
+                    # Move to next sibling
+                    current = current.next_sibling
+                
+                content = ' '.join(content_parts)
+                
+                # Only create section if we have substantial content
+                if content and len(content) > 100:
+                    section_data = {
+                        'title': title,
+                        'content': content,
+                        'section': 'navigation-based',
+                        'subsection': title.lower().replace(' ', '-'),
+                        'headers': headers,
+                        'code_blocks': code_blocks,
+                        'id': f"nav-{len(nav_sections_created)}-{title.lower().replace(' ', '-')}",
+                    }
+                    nav_sections_created.append(section_data)
+                    logger.debug("Created navigation-based section", title=title, content_length=len(content))
+                else:
+                    logger.debug("Content too short or empty", title=title, content_length=len(content) if content else 0)
+            else:
+                logger.debug("No content element found for navigation section", title=title)
+        
+        logger.info("Navigation-based sections created", count=len(nav_sections_created))
+        return nav_sections_created
 
     async def scrape_all_sections(self):
-        """Scrape all documentation sections from the SPA main page only."""
+        """Scrape all documentation sections from the SPA main page and linked pages."""
         documents = []
         
         logger.info("Scraping main SPA page with Playwright", url=self.base_url)
         html = await self.fetch_page_with_playwright(self.base_url)
         
         if html:
-            # Always treat as SPA and extract comprehensive sections
-            logger.info("Extracting comprehensive sections from SPA")
+            # Extract sections from the main SPA page
+            logger.info("Extracting comprehensive sections from main SPA page")
             spa_docs = self.extract_sections_from_spa(html, self.base_url)
             documents.extend(spa_docs)
+            
+            # Index documents immediately after extracting from main SPA page
+            if spa_docs:
+                try:
+                    self.index_documents(spa_docs)
+                    logger.info("Indexed documents from main SPA page immediately", count=len(spa_docs))
+                except Exception as index_error:
+                    logger.error("Immediate indexing failed for main SPA page", error=str(index_error))
+            
+            # Extract navigation sections to get links to other pages
+            soup = BeautifulSoup(html, 'html.parser')
+            nav_sections = self.extract_navigation_sections(soup)
+            
+            # Fetch and extract content from navigation-linked pages
+            linked_docs = await self.fetch_navigation_linked_pages(nav_sections)
+            documents.extend(linked_docs)
             
             # Filter out documents with minimal content
             filtered_docs = []
@@ -418,11 +555,25 @@ class StrandsDocsScraper:
             logger.error("Failed to fetch main SPA page")
             return []
 
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
     def index_documents(self, documents: List[Dict]):
         """Index documents in Elasticsearch."""
         if not documents:
             logger.warning("No documents to index")
             return
+        
+        # Check if Elasticsearch client is still connected
+        try:
+            if not self.es_client.ping():
+                logger.warning("Elasticsearch connection lost, attempting to reconnect")
+                self.setup_elasticsearch()
+        except Exception as ping_error:
+            logger.warning("Failed to ping Elasticsearch, attempting to reconnect", error=str(ping_error))
+            try:
+                self.setup_elasticsearch()
+            except Exception as setup_error:
+                logger.error("Failed to reconnect to Elasticsearch", error=str(setup_error))
+                raise
         
         def doc_generator():
             for i, doc in enumerate(documents):
@@ -452,35 +603,80 @@ class StrandsDocsScraper:
             if failed:
                 for failure in failed:
                     logger.error("Failed to index document", error=failure)
-                logger.error("1 document(s) failed to index.")
-                    
+                logger.error(f"{len(failed)} document(s) failed to index.")
+                
         except Exception as e:
             logger.error("Failed to bulk index documents", error=str(e))
+            import traceback
+            logger.error("Full traceback", traceback=traceback.format_exc())
             raise
+    
+    async def fetch_navigation_linked_pages(self, nav_sections):
+        """Fetch and extract content from navigation-linked pages."""
+        documents = []
+        
+        # Filter navigation sections to get unique URLs that are part of our documentation
+        urls_to_fetch = set()
+        for nav_section in nav_sections:
+            href = nav_section['href']
+            title = nav_section['title']
+            
+            # Skip version links and external links
+            if any(skip_word in title.lower() for skip_word in ['0.', '1.']):
+                continue
+            
+            # Only process URLs that are part of our documentation
+            if href and 'strandsagents.com' in href and '/documentation/docs/' in href:
+                # Convert to absolute URL if needed
+                if href.startswith('/'):
+                    href = f"https://strandsagents.com{href}"
+                urls_to_fetch.add((href, title))
+        
+        logger.info("Fetching content from navigation-linked pages", count=len(urls_to_fetch))
+        
+        # Fetch content from each URL
+        for url, nav_title in urls_to_fetch:
+            try:
+                logger.info("Fetching page", url=url, nav_title=nav_title)
+                html = await self.fetch_page_with_playwright(url)
+                
+                if html:
+                    # Extract sections from this page
+                    page_docs = self.extract_sections_from_spa(html, url)
+                    documents.extend(page_docs)
+                    
+                    # Index documents immediately after fetching each page
+                    if page_docs:
+                        try:
+                            self.index_documents(page_docs)
+                            logger.info("Indexed documents from page immediately", url=url, count=len(page_docs))
+                        except Exception as index_error:
+                            logger.error("Immediate indexing failed for page", url=url, error=str(index_error))
+                    
+                    logger.info("Extracted sections from page", url=url, sections=len(page_docs))
+                else:
+                    logger.warning("Failed to fetch page", url=url)
+            except Exception as e:
+                logger.error("Error fetching page", url=url, error=str(e))
+                continue
+        
+        logger.info("Finished fetching navigation-linked pages", total_documents=len(documents))
+        return documents
 
     async def run(self):
         """Run the complete scraping and indexing process."""
         logger.info("Starting Strands Agents documentation scraper with Playwright")
         
         try:
-            # Scrape all documentation
+            # Scrape all documentation (indexing happens immediately during scraping)
             documents = await self.scrape_all_sections()
             
             if not documents:
                 logger.warning("No documents scraped")
                 return
             
-            # Index in Elasticsearch
-            try:
-                self.index_documents(documents)
-                logger.info("Scraping and indexing completed successfully", 
-                           total_docs=len(documents))
-            except Exception as index_error:
-                logger.error("Indexing failed but scraping succeeded", 
-                           error=str(index_error), 
-                           scraped_docs=len(documents))
-                # Don't exit with error code for indexing failures
-                # The MCP server can still work with existing data
+            logger.info("Scraping and indexing completed successfully", 
+                       total_docs=len(documents))
             
         except Exception as e:
             logger.error("Scraping failed", error=str(e))
