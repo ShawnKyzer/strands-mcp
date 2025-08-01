@@ -40,6 +40,13 @@ structlog.configure(
     cache_logger_on_first_use=True,
 )
 
+# Also configure standard logging to output to console
+import logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
 logger = structlog.get_logger()
 
 
