@@ -14,7 +14,7 @@ from typing import List, Dict, Optional
 from urllib.parse import urljoin, urlparse
 import time
 
-import aiohttp
+from playwright.async_api import async_playwright
 import structlog
 from bs4 import BeautifulSoup
 from elasticsearch import Elasticsearch
@@ -50,30 +50,41 @@ class StrandsDocsScraper:
         self.base_url = base_url.rstrip('/')
         self.elasticsearch_url = elasticsearch_url
         self.es_client = None
-        self.session = None
+        self.playwright = None
+        self.browser = None
         self.scraped_urls = set()
         self.index_name = "strands-agents-docs"
         
-        # Known working URLs from navigation
-        self.target_sections = [
-            "",  # Main documentation page
-            "examples/",
-            "api-reference/agent/"
+        # URLs to discover and crawl
+        self.discovered_urls = set()
+        self.max_depth = 3  # Limit crawling depth
+        self.allowed_paths = [
+            '/latest/documentation/docs/',
+            '/latest/documentation/docs/user-guide/',
+            '/latest/documentation/docs/examples/',
+            '/latest/documentation/docs/api-reference/',
+            '/latest/documentation/docs/deploy/',
+            '/latest/documentation/docs/observability/',
+            '/latest/documentation/docs/safety/',
         ]
 
     async def __aenter__(self):
         """Async context manager entry."""
-        self.session = aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=30),
-            headers={'User-Agent': 'Strands-MCP-Scraper/1.0'}
+        # Setup Playwright
+        self.playwright = await async_playwright().start()
+        self.browser = await self.playwright.chromium.launch(
+            headless=True,
+            args=['--no-sandbox', '--disable-setuid-sandbox']  # Required for Docker
         )
         await self.setup_elasticsearch()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit."""
-        if self.session:
-            await self.session.close()
+        if self.browser:
+            await self.browser.close()
+        if self.playwright:
+            await self.playwright.stop()
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
     async def setup_elasticsearch(self):
@@ -124,316 +135,281 @@ class StrandsDocsScraper:
             logger.error("Failed to setup Elasticsearch", error=str(e))
             raise
 
-    async def fetch_page(self, url: str) -> Optional[str]:
-        """Fetch a single page content."""
+    async def fetch_page_with_playwright(self, url: str) -> Optional[str]:
+        """Fetch a single page content using Playwright."""
         try:
-            async with self.session.get(url) as response:
-                if response.status == 200:
-                    return await response.text()
-                else:
-                    logger.warning("Failed to fetch page", url=url, status=response.status)
-                    return None
+            page = await self.browser.new_page()
+            
+            # Navigate to the page
+            await page.goto(url, wait_until='networkidle', timeout=30000)
+            
+            # Wait for content to be loaded (adjust selector as needed)
+            try:
+                await page.wait_for_selector('main', timeout=10000)
+            except:
+                # If main is not found, wait for body content
+                await page.wait_for_selector('body', timeout=10000)
+            
+            # Additional wait for any dynamic content
+            await page.wait_for_load_state('networkidle')
+            await page.wait_for_timeout(2000)  # 2 second additional wait
+            
+            # Get the fully rendered HTML
+            html = await page.content()
+            
+            # Optionally, you can also interact with the page here
+            # For example, click on expand buttons if needed:
+            # expand_buttons = await page.query_selector_all('button.expand')
+            # for button in expand_buttons:
+            #     await button.click()
+            #     await page.wait_for_timeout(500)
+            
+            await page.close()
+            return html
+            
         except Exception as e:
-            logger.error("Error fetching page", url=url, error=str(e))
+            logger.error("Error fetching page with Playwright", url=url, error=str(e))
             return None
 
     def extract_sections_from_spa(self, html: str, url: str) -> List[Dict]:
         """Extract multiple sections from single-page application HTML."""
-        soup = BeautifulSoup(html, 'lxml')
+        soup = BeautifulSoup(html, 'html.parser')
         documents = []
         
-        # Remove navigation and footer elements
-        for element in soup.find_all(['nav', 'footer', 'header', '.navigation']):
-            element.decompose()
+        # First, extract navigation structure to understand available sections
+        nav_sections = self.extract_navigation_sections(soup)
+        logger.info("Found navigation sections", count=len(nav_sections))
         
-        # Find the main content area
+        # Find the main content area (preserve navigation for structure analysis)
         main_content = soup.find('main') or soup.find('article') or soup.find('div', class_='content')
         if not main_content:
             main_content = soup.find('body')
         
-        # Remove scripts and styles
-        for script in main_content(["script", "style"]):
+        # Create a copy for processing
+        content_soup = BeautifulSoup(str(main_content), 'html.parser')
+        
+        # Remove scripts and styles but keep structure
+        for script in content_soup(["script", "style"]):
             script.decompose()
         
-        # Extract the main overview document
-        main_title = "Strands Agents SDK Documentation"
-        title_elem = soup.find('h1')
-        if title_elem:
-            main_title = title_elem.get_text().strip()
-        elif soup.title:
-            main_title = soup.title.get_text().strip()
+        # Extract comprehensive sections based on headings and content blocks
+        sections = self.extract_comprehensive_sections(content_soup, nav_sections)
         
-        # Get all text content for the main document
-        full_content = main_content.get_text()
-        full_content = ' '.join(full_content.split())
+        for section_data in sections:
+            if section_data['content'].strip() and len(section_data['content']) > 100:
+                doc = {
+                    "url": f"{url}#{section_data.get('id', section_data['title'].lower().replace(' ', '-'))}",
+                    "title": section_data['title'],
+                    "content": section_data['content'],
+                    "section": section_data['section'],
+                    "subsection": section_data['subsection'],
+                    "headers": " | ".join(section_data['headers']),
+                    "code_blocks": " | ".join(section_data['code_blocks']),
+                    "scraped_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "version": "1.1.x"
+                }
+                documents.append(doc)
         
-        # Extract all headers for navigation structure
-        all_headers = []
-        for header in main_content.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']):
-            header_text = header.get_text().strip()
-            if header_text and len(header_text) > 1:
-                all_headers.append(header_text)
-        
-        # Extract all code blocks
-        all_code_blocks = []
-        for code in main_content.find_all(['code', 'pre']):
-            code_text = code.get_text().strip()
-            if len(code_text) > 10:  # Only meaningful code blocks
-                all_code_blocks.append(code_text)
-        
-        # Create main document with all content
-        main_doc = {
-            "url": url,
-            "title": main_title,
-            "content": full_content,
-            "section": "main",
-            "subsection": "overview",
-            "headers": " | ".join(all_headers),
-            "code_blocks": " | ".join(all_code_blocks),
-            "scraped_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "version": "1.1.x"
-        }
-        documents.append(main_doc)
-        
-        # Try to extract logical sections based on content structure
-        sections_content = self.extract_logical_sections(main_content)
-        for section_data in sections_content:
-            section_doc = {
-                "url": f"{url}#{section_data['id']}",
-                "title": section_data['title'],
-                "content": section_data['content'],
-                "section": section_data['section'],
-                "subsection": section_data['subsection'],
-                "headers": " | ".join(section_data['headers']),
-                "code_blocks": " | ".join(section_data['code_blocks']),
-                "scraped_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "version": "1.1.x"
-            }
-            documents.append(section_doc)
-        
+        logger.info("Extracted SPA sections", total_sections=len(documents))
         return documents
     
-    def extract_logical_sections(self, main_content) -> List[Dict]:
-        """Extract logical sections from the main content based on headers and structure."""
+    def extract_navigation_sections(self, soup):
+        """Extract section information from navigation elements."""
+        nav_sections = []
+        
+        # Look for navigation elements
+        nav_selectors = [
+            'nav ul li a',
+            '.sidebar ul li a', 
+            '.navigation ul li a',
+            '.menu ul li a',
+            '[role="navigation"] ul li a'
+        ]
+        
+        for selector in nav_selectors:
+            for link in soup.select(selector):
+                text = link.get_text().strip()
+                href = link.get('href', '')
+                if text and len(text) > 1:
+                    nav_sections.append({
+                        'title': text,
+                        'href': href,
+                        'level': len(link.find_parents('ul'))
+                    })
+        
+        return nav_sections
+    
+    def extract_comprehensive_sections(self, soup, nav_sections):
+        """Extract comprehensive sections based on content structure."""
         sections = []
         
-        # Define section mappings based on observed navigation structure
-        section_keywords = {
-            'quickstart': ['quickstart', 'getting started', 'installation'],
-            'agents': ['agent', 'create agent', 'agent loop'],
-            'tools': ['tools', 'python tools', 'mcp', 'example tools'],
-            'model-providers': ['model provider', 'bedrock', 'anthropic', 'openai', 'ollama'],
-            'streaming': ['streaming', 'async', 'callback'],
-            'multi-agent': ['multi-agent', 'agent2agent', 'swarm', 'graph', 'workflow'],
-            'safety': ['safety', 'security', 'responsible', 'guardrails'],
-            'observability': ['observability', 'evaluation', 'metrics', 'traces', 'logs'],
-            'deployment': ['deploy', 'production', 'lambda', 'fargate']
-        }
+        # Find all major headings (h1, h2, h3)
+        headings = soup.find_all(['h1', 'h2', 'h3'])
         
-        # Find all paragraphs and headers
-        content_blocks = main_content.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'div', 'section'])
-        
-        current_section = None
-        current_content = []
-        current_headers = []
-        current_codes = []
-        
-        for block in content_blocks:
-            block_text = block.get_text().strip()
-            if not block_text or len(block_text) < 10:
+        for i, heading in enumerate(headings):
+            heading_text = heading.get_text().strip()
+            if not heading_text or len(heading_text) < 2:
                 continue
-            
-            # Check if this block indicates a new section
-            block_lower = block_text.lower()
-            detected_section = None
-            
-            for section_name, keywords in section_keywords.items():
-                if any(keyword in block_lower for keyword in keywords):
-                    detected_section = section_name
-                    break
-            
-            # If we detected a new section and have accumulated content, save it
-            if detected_section and detected_section != current_section and current_content:
-                if current_section:
-                    sections.append({
-                        'id': current_section,
-                        'title': f"Strands Agents - {current_section.replace('-', ' ').title()}",
-                        'content': ' '.join(current_content),
-                        'section': current_section,
-                        'subsection': '',
-                        'headers': current_headers,
-                        'code_blocks': current_codes
-                    })
                 
-                # Start new section
-                current_section = detected_section
-                current_content = []
-                current_headers = []
-                current_codes = []
+            # Determine section and subsection based on heading level and nav structure
+            section, subsection = self.categorize_heading(heading_text, heading.name, nav_sections)
             
-            # Add content to current section
-            if block.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
-                current_headers.append(block_text)
+            # Extract content until next heading of same or higher level
+            content_elements = []
+            current = heading.next_sibling
             
-            # Check for code blocks within this block
-            for code in block.find_all(['code', 'pre']):
-                code_text = code.get_text().strip()
-                if len(code_text) > 10:
-                    current_codes.append(code_text)
+            while current:
+                if hasattr(current, 'name'):
+                    # Stop at next heading of same or higher level
+                    if current.name in ['h1', 'h2', 'h3']:
+                        current_level = int(current.name[1])
+                        heading_level = int(heading.name[1])
+                        if current_level <= heading_level:
+                            break
+                    
+                    # Collect content elements
+                    if current.name in ['p', 'div', 'ul', 'ol', 'pre', 'code', 'blockquote']:
+                        content_elements.append(current)
+                
+                current = current.next_sibling
             
-            current_content.append(block_text)
+            # Extract text content
+            content_parts = []
+            headers = [heading_text]
+            code_blocks = []
+            
+            for elem in content_elements:
+                if elem.name in ['pre', 'code']:
+                    code_text = elem.get_text().strip()
+                    if len(code_text) > 10:
+                        code_blocks.append(code_text)
+                elif elem.name in ['h4', 'h5', 'h6']:
+                    headers.append(elem.get_text().strip())
+                
+                text = elem.get_text().strip()
+                if text:
+                    content_parts.append(text)
+            
+            content = ' '.join(content_parts)
+            
+            if content and len(content) > 50:
+                sections.append({
+                    'title': heading_text,
+                    'content': content,
+                    'section': section,
+                    'subsection': subsection,
+                    'headers': headers,
+                    'code_blocks': code_blocks,
+                    'id': heading.get('id', heading_text.lower().replace(' ', '-'))
+                })
         
-        # Add the last section if any
-        if current_section and current_content:
-            sections.append({
-                'id': current_section,
-                'title': f"Strands Agents - {current_section.replace('-', ' ').title()}",
-                'content': ' '.join(current_content),
-                'section': current_section,
-                'subsection': '',
-                'headers': current_headers,
-                'code_blocks': current_codes
-            })
+        # Also extract content blocks that might not have clear headings
+        self.extract_additional_content_blocks(soup, sections)
         
         return sections
     
-    def extract_content(self, html: str, url: str) -> Dict:
-        """Extract structured content from HTML (for non-SPA pages)."""
-        soup = BeautifulSoup(html, 'lxml')
+    def categorize_heading(self, heading_text, heading_level, nav_sections):
+        """Categorize heading into section and subsection based on navigation structure."""
+        heading_lower = heading_text.lower()
         
-        # Remove navigation and footer elements
-        for element in soup.find_all(['nav', 'footer', 'header', '.navigation']):
-            element.decompose()
-        
-        # Extract title
-        title = ""
-        title_elem = soup.find('h1')
-        if title_elem:
-            title = title_elem.get_text().strip()
-        elif soup.title:
-            title = soup.title.get_text().strip()
-        
-        # Extract main content
-        main_content = soup.find('main') or soup.find('article') or soup.find('div', class_='content')
-        if not main_content:
-            main_content = soup.find('body')
-        
-        # Extract headers
-        headers = []
-        for header in main_content.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']):
-            headers.append(header.get_text().strip())
-        
-        # Extract code blocks
-        code_blocks = []
-        for code in main_content.find_all(['code', 'pre']):
-            code_text = code.get_text().strip()
-            if len(code_text) > 10:  # Only meaningful code blocks
-                code_blocks.append(code_text)
-        
-        # Extract clean text content
-        for script in main_content(["script", "style"]):
-            script.decompose()
-        
-        content = main_content.get_text()
-        # Clean up whitespace
-        content = ' '.join(content.split())
-        
-        # Determine section and subsection from URL
-        url_path = urlparse(url).path
-        path_parts = [p for p in url_path.split('/') if p]
-        
-        section = ""
-        subsection = ""
-        if len(path_parts) >= 4:  # /latest/documentation/docs/section/
-            section = path_parts[3] if len(path_parts) > 3 else ""
-            subsection = path_parts[4] if len(path_parts) > 4 else ""
-        
-        return {
-            "url": url,
-            "title": title,
-            "content": content,
-            "section": section,
-            "subsection": subsection,
-            "headers": " | ".join(headers),
-            "code_blocks": " | ".join(code_blocks),
-            "scraped_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "version": "1.1.x"
+        # Map common patterns to sections
+        section_mappings = {
+            'quickstart': ('user-guide', 'quickstart'),
+            'concepts': ('user-guide', 'concepts'),
+            'agents': ('user-guide', 'agents'),
+            'tools': ('user-guide', 'tools'),
+            'model providers': ('user-guide', 'model-providers'),
+            'streaming': ('user-guide', 'streaming'),
+            'multi-agent': ('user-guide', 'multi-agent'),
+            'safety': ('user-guide', 'safety'),
+            'security': ('user-guide', 'security'),
+            'observability': ('user-guide', 'observability'),
+            'evaluation': ('user-guide', 'evaluation'),
+            'deploy': ('user-guide', 'deploy'),
+            'examples': ('examples', 'overview'),
+            'api reference': ('api-reference', 'overview'),
+            'features': ('main', 'features'),
+            'next steps': ('main', 'next-steps')
         }
-
-    async def discover_documentation_urls(self, html: str) -> List[str]:
-        """Discover actual documentation URLs from the main page."""
-        soup = BeautifulSoup(html, 'lxml')
-        discovered_urls = set()
         
-        # Look for navigation links
-        for link in soup.find_all('a', href=True):
-            href = link['href']
-            if href.startswith('/'):
-                # Convert relative URLs to absolute
-                full_url = urljoin(self.base_url, href)
-                if '/documentation/docs/' in full_url and full_url != self.base_url:
-                    discovered_urls.add(full_url)
+        for pattern, (section, subsection) in section_mappings.items():
+            if pattern in heading_lower:
+                return section, subsection
         
-        return list(discovered_urls)
+        # Default categorization based on heading level
+        if heading_level == 'h1':
+            return 'main', 'overview'
+        elif heading_level == 'h2':
+            return 'user-guide', heading_text.lower().replace(' ', '-')
+        else:
+            return 'user-guide', 'concepts'
+    
+    def extract_additional_content_blocks(self, soup, existing_sections):
+        """Extract additional content blocks that might be missed."""
+        # Look for content in divs, articles, or sections that might contain documentation
+        content_selectors = [
+            'article',
+            '.content',
+            '.documentation',
+            '.docs-content',
+            'section'
+        ]
+        
+        existing_content = {s['content'][:100] for s in existing_sections}
+        
+        for selector in content_selectors:
+            for element in soup.select(selector):
+                text = element.get_text().strip()
+                if len(text) > 200 and text[:100] not in existing_content:
+                    # This is additional content worth extracting
+                    title = "Additional Documentation"
+                    title_elem = element.find(['h1', 'h2', 'h3', 'h4'])
+                    if title_elem:
+                        title = title_elem.get_text().strip()
+                    
+                    existing_sections.append({
+                        'title': title,
+                        'content': text,
+                        'section': 'additional',
+                        'subsection': 'content',
+                        'headers': [title],
+                        'code_blocks': [],
+                        'id': f"additional-{len(existing_sections)}"
+                    })
 
-    async def scrape_all_sections(self) -> List[Dict]:
-        """Scrape all target documentation sections."""
+    async def scrape_all_sections(self):
+        """Scrape all documentation sections from the SPA main page only."""
         documents = []
         
-        # First scrape the main documentation page
-        main_url = self.base_url
-        logger.info("Scraping main documentation page", url=main_url)
+        logger.info("Scraping main SPA page with Playwright", url=self.base_url)
+        html = await self.fetch_page_with_playwright(self.base_url)
         
-        html = await self.fetch_page(main_url)
         if html:
-            # Extract multiple sections from the SPA main page
-            spa_docs = self.extract_sections_from_spa(html, main_url)
+            # Always treat as SPA and extract comprehensive sections
+            logger.info("Extracting comprehensive sections from SPA")
+            spa_docs = self.extract_sections_from_spa(html, self.base_url)
             documents.extend(spa_docs)
-            self.scraped_urls.add(main_url)
-            logger.info("Extracted sections from main SPA page", sections_count=len(spa_docs))
             
-            # Discover additional URLs from the main page
-            discovered_urls = await self.discover_documentation_urls(html)
-            logger.info("Discovered URLs", count=len(discovered_urls), urls=discovered_urls[:5])  # Log first 5
+            # Filter out documents with minimal content
+            filtered_docs = []
+            for doc in documents:
+                content = doc.get('content', '').strip()
+                if len(content) > 100:  # Only keep docs with substantial content
+                    filtered_docs.append(doc)
+                else:
+                    logger.debug("Filtered out minimal content doc", 
+                               title=doc.get('title', 'unknown'),
+                               content_length=len(content))
             
-            # Add discovered URLs to target sections
-            for url in discovered_urls:
-                if url not in self.scraped_urls:
-                    # Extract section from URL for logging
-                    section = url.replace(self.base_url, '').strip('/')
-                    logger.info("Scraping discovered section", section=section, url=url)
-                    
-                    section_html = await self.fetch_page(url)
-                    if section_html:
-                        section_doc = self.extract_content(section_html, url)
-                        documents.append(section_doc)
-                        self.scraped_urls.add(url)
-                        
-                        # Small delay to be respectful
-                        await asyncio.sleep(0.5)
-        
-        # Also scrape the known working sections
-        for section in self.target_sections:
-            if not section:  # Skip empty string (main page already scraped)
-                continue
-                
-            section_url = urljoin(self.base_url + '/', section)
-            if section_url in self.scraped_urls:
-                continue
-                
-            logger.info("Scraping known section", section=section, url=section_url)
+            logger.info("SPA scraping completed", 
+                       total_sections_found=len(documents),
+                       total_documents_kept=len(filtered_docs),
+                       filtered_out=len(documents) - len(filtered_docs))
             
-            html = await self.fetch_page(section_url)
-            if html:
-                doc = self.extract_content(html, section_url)
-                documents.append(doc)
-                self.scraped_urls.add(section_url)
-                
-                # Small delay to be respectful
-                await asyncio.sleep(0.5)
-        
-        logger.info("Scraping completed", total_documents=len(documents))
-        return documents
+            return filtered_docs
+        else:
+            logger.error("Failed to fetch main SPA page")
+            return []
 
     def index_documents(self, documents: List[Dict]):
         """Index documents in Elasticsearch."""
@@ -477,7 +453,7 @@ class StrandsDocsScraper:
 
     async def run(self):
         """Run the complete scraping and indexing process."""
-        logger.info("Starting Strands Agents documentation scraper")
+        logger.info("Starting Strands Agents documentation scraper with Playwright")
         
         try:
             # Scrape all documentation

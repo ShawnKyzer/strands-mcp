@@ -16,36 +16,28 @@ services:
     networks:
       - strands-network
 
-  scraper:
-    build:
-      context: .
-      dockerfile: scraper/Dockerfile
-    container_name: strands-scraper
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.1
+    container_name: strands-kibana
     environment:
-      - ELASTICSEARCH_URL=http://elasticsearch:9200
-      - DOCS_BASE_URL=https://strandsagents.com/latest/documentation/docs/
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - xpack.security.enabled=false
+      - xpack.security.enrollment.enabled=false
+      - xpack.encryptedSavedObjects.encryptionKey=a7a6311933d3503b89bc2dbc36572c33a6c10925682e591bffcab6911c06786d
+      - xpack.reporting.encryptionKey=a7a6311933d3503b89bc2dbc36572c33a6c10925682e591bffcab6911c06786d
+      - xpack.security.session.idleTimeout=1d
+      - xpack.security.session.lifespan=30d
+      - KIBANA_SYSTEM_PASSWORD=""
+      - server.publicBaseUrl=http://localhost:5601
+    ports:
+      - "5601:5601"
     depends_on:
       - elasticsearch
-    volumes:
-      - ./logs:/app/logs
-    networks:
-      - strands-network
-    restart: "no"  # Run once to scrape and index
-
-  mcp-server:
-    build:
-      context: .
-      dockerfile: mcp_server/Dockerfile
-    container_name: strands-mcp-server
-    environment:
-      - ELASTICSEARCH_URL=http://elasticsearch:9200
-    depends_on:
-      - elasticsearch
-    volumes:
-      - ./logs:/app/logs
     networks:
       - strands-network
     restart: unless-stopped
+
+
 
 volumes:
   elasticsearch_data:

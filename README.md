@@ -19,18 +19,62 @@ This project provides an MCP (Model Context Protocol) server that scrapes the St
 ## Quick Start
 
 ```bash
-# Build and start all services
-docker-compose up --build
+# Start Elasticsearch and Kibana
+docker-compose up -d
+
+# Elasticsearch will be available on port 9200
+# Kibana GUI will be available on port 5601
+```
+
+## Running the Scraper Locally
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Install Playwright browsers
+playwright install chromium
+
+# Run the scraper to index documentation
+python scraper/main.py
+```
+
+## Running the MCP Server Locally
+
+```bash
+# Run the MCP server
+python mcp_server/main.py
 
 # The MCP server will be available on port 8000
-# Elasticsearch will be available on port 9200
 ```
 
 ## Configuration
 
 - Elasticsearch index: `strands-agents-docs`
 - MCP server port: 8000
+- Kibana GUI port: 5601
 - Documentation source: https://strandsagents.com/latest/documentation/docs/
+
+## Viewing Data with Kibana
+
+Kibana provides a web-based GUI for exploring and visualizing your Elasticsearch data:
+
+1. **Access Kibana**: Open http://localhost:5601 in your browser (no login required)
+2. **Create Index Pattern**: 
+   - Go to Stack Management → Index Patterns
+   - Create a new index pattern with `strands-agents-docs`
+   - Select `@timestamp` as the time field if available
+3. **Explore Data**:
+   - Use **Discover** to browse and search through scraped documentation
+   - Use **Dashboard** to create visualizations of your data
+   - Use **Dev Tools** to run Elasticsearch queries directly
+
+### Quick Data Exploration
+
+- **Discover Tab**: View all indexed documents with full-text search
+- **Search**: Use the search bar to find specific documentation content
+- **Filters**: Apply filters to narrow down results by fields
+- **Time Range**: Adjust time range to see when documents were indexed
 
 ## Usage with Amazon Q
 
