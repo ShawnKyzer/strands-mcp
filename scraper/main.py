@@ -292,13 +292,14 @@ class StrandsDocsScraper:
             code_blocks = []
             
             for elem in content_elements:
-                if elem.name in ['pre', 'code']:
-                    code_text = elem.get_text().strip()
-                    if len(code_text) > 10:
-                        code_blocks.append(code_text)
-                elif elem.name in ['h4', 'h5', 'h6']:
+                # Extract code blocks from various HTML structures
+                code_text = self.extract_code_from_element(elem)
+                if code_text:
+                    code_blocks.extend(code_text)
+            
+                if elem.name in ['h4', 'h5', 'h6']:
                     headers.append(elem.get_text().strip())
-                
+            
                 text = elem.get_text().strip()
                 if text:
                     content_parts.append(text)
@@ -327,6 +328,55 @@ class StrandsDocsScraper:
         
         return sections
     
+    def extract_code_from_element(self, elem):
+        """Extract code blocks from various HTML structures commonly used in documentation."""
+        code_blocks = []
+        
+        if not elem or not hasattr(elem, 'name'):
+            return code_blocks
+        
+        # Direct code/pre tags
+        if elem.name in ['pre', 'code']:
+            code_text = elem.get_text().strip()
+            if len(code_text) > 10:
+                code_blocks.append(code_text)
+        
+        # Look for common code block wrapper classes
+        elif elem.name == 'div':
+            classes = elem.get('class', [])
+            if isinstance(classes, str):
+                classes = [classes]
+            
+            # Check for common code block classes
+            code_classes = ['highlight', 'codehilite', 'code-block', 'sourceCode', 'hljs', 'language-']
+            if any(code_class in ' '.join(classes) for code_class in code_classes):
+                # Find nested pre/code tags
+                nested_code = elem.find_all(['pre', 'code'])
+                for code_elem in nested_code:
+                    code_text = code_elem.get_text().strip()
+                    if len(code_text) > 10:
+                        code_blocks.append(code_text)
+        
+        # Look for figure tags that might contain code
+        elif elem.name == 'figure':
+            nested_code = elem.find_all(['pre', 'code'])
+            for code_elem in nested_code:
+                code_text = code_elem.get_text().strip()
+                if len(code_text) > 10:
+                    code_blocks.append(code_text)
+        
+        # Also recursively check child elements for code blocks
+        if elem.name not in ['pre', 'code'] and hasattr(elem, 'find_all'):
+            # Look for any nested pre/code tags that might have been missed
+            nested_code = elem.find_all(['pre', 'code'])
+            for code_elem in nested_code:
+                # Avoid duplicates by checking if we already processed this
+                code_text = code_elem.get_text().strip()
+                if len(code_text) > 10 and code_text not in code_blocks:
+                    code_blocks.append(code_text)
+        
+        return code_blocks
+
     def categorize_heading(self, heading_text, heading_level, nav_sections):
         """Categorize heading into section and subsection based on navigation structure."""
         heading_lower = heading_text.lower()
