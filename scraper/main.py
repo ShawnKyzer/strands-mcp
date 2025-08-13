@@ -733,8 +733,13 @@ class StrandsDocsScraper:
             raise
 
 
-async def main():
-    """Main entry point."""
+def main():
+    """Main entry point for uv script."""
+    asyncio.run(async_main())
+
+
+async def async_main():
+    """Async main entry point."""
     base_url = os.getenv('DOCS_BASE_URL', 'https://strandsagents.com/latest/documentation/docs/')
     elasticsearch_url = os.getenv('ELASTICSEARCH_URL', 'http://localhost:9200')
     
@@ -745,4 +750,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(async_main())

@@ -28,6 +28,7 @@ docker-compose up -d
 
 ## Running the Scraper Locally
 
+### Using pip
 ```bash
 # Install dependencies
 pip install -r requirements.txt
@@ -37,6 +38,18 @@ playwright install chromium
 
 # Run the scraper to index documentation
 python scraper/main.py
+```
+
+### Using uv
+```bash
+# Install dependencies
+uv sync
+
+# Install Playwright browsers
+uv run playwright install chromium
+
+# Run the scraper to index documentation
+uv run python scraper/main.py
 ```
 
 ## Running the MCP Server Locally
@@ -94,6 +107,7 @@ cp windsurf-mcp-config.json ~/.windsurf/mcp-servers.json
 
 ## Development
 
+### Using pip
 ```bash
 # Install dependencies
 pip install -r requirements.txt
@@ -109,6 +123,24 @@ python run_standalone.py
 
 # Test the setup
 python test_setup.py
+```
+
+### Using uv
+```bash
+# Install dependencies
+uv sync
+
+# Run scraper manually
+ELASTICSEARCH_URL=http://localhost:9200 uv run python scraper/main.py
+
+# Run MCP server manually
+ELASTICSEARCH_URL=http://localhost:9200 uv run python mcp_server/main.py
+
+# Run standalone (Python + Docker Elasticsearch)
+uv run python run_standalone.py
+
+# Test the setup
+uv run python test_setup.py
 ```
 
 ## Integration Options
