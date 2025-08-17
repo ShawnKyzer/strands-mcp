@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  # Init container to restore volume data
+  es-data-restore:
+    image: alpine:latest
+    container_name: es-data-restore
+    volumes:
+      - elasticsearch_data:/data
+      - ./es-data.tar.gz:/backup/es-data.tar.gz:ro
+    command: >
+      sh -c "
+        if [ ! -f /data/.restored ]; then
+          echo 'Restoring Elasticsearch data...';
+          tar xzf /backup/es-data.tar.gz -C /data;
+          touch /data/.restored;
+          echo 'Data restoration complete';
+        else
+          echo 'Data already restored, skipping...';
+        fi
+      "
+
+  elasticsearch:
+    image: shawnkyzer/strands-mcp:elasticsearch
+    container_name: strands-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - strands-network
+    depends_on:
+      es-data-restore:
+        condition: service_completed_successfully
+
+  kibana:
+    image: shawnkyzer/strands-mcp:kibana
+    container_name: strands-kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+    networks:
+      - strands-network
+
+volumes:
+  elasticsearch_data:
+    driver: local
+
+networks:
+  strands-network:
+    driver: bridge
