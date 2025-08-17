@@ -18,12 +18,40 @@ This project provides an MCP (Model Context Protocol) server that scrapes the St
 
 ## Quick Start
 
+### Option 1: Using Pre-indexed Data (Recommended)
+
+The `docker/` directory contains a Docker Compose setup with pre-indexed Strands documentation:
+
 ```bash
-# Start Elasticsearch and Kibana
+# Navigate to the docker directory
+cd docker/
+
+# Start all services (Elasticsearch, Kibana, and data restoration)
 docker-compose up -d
+
+# Wait for services to start (about 30-60 seconds)
+# Check status
+docker-compose ps
 
 # Elasticsearch will be available on port 9200
 # Kibana GUI will be available on port 5601
+```
+
+This setup includes:
+- **Elasticsearch** with pre-indexed Strands documentation
+- **Kibana** for data visualization and exploration
+- **Automatic data restoration** from `es-data.tar.gz`
+
+### Option 2: Fresh Setup (Root Directory)
+
+For a fresh setup without pre-indexed data:
+
+```bash
+# Start Elasticsearch and Kibana (from root directory)
+docker-compose up -d
+
+# Then run the scraper to index documentation
+python scraper/main.py
 ```
 
 ## Running the Scraper Locally
