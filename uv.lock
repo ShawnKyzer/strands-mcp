@@ -143,15 +143,6 @@ wheels = [
 ]
 
 [[package]]
-name = "asyncio-throttle"
-version = "1.0.2"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/13/6f/0e2d42c0e95d50edf63147b8a742703061945e02760f25d6a0e8f028ccb0/asyncio-throttle-1.0.2.tar.gz", hash = "sha256:2675282e99d9129ecc446f917e174bc205c65e36c602aa18603b4948567fcbd4", size = 3775 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f6/6a/d18c93722fb56dc1ffed5fb7e7fcff4f8031f80f84c5cc0427363a036b0c/asyncio_throttle-1.0.2-py3-none-any.whl", hash = "sha256:4d4c1eb3250f735f59ce842d8d92cd2927c008bd52008797ba030b5787c41f3b", size = 4079 },
-]
-
-[[package]]
 name = "attrs"
 version = "25.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -476,6 +467,20 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/0b/9f/a65090624ecf468cdca03533906e7c69ed7588582240cfe7cc9e770b50eb/exceptiongroup-1.3.0.tar.gz", hash = "sha256:b241f5885f560bc56a59ee63ca4c6a8bfa46ae4ad651af316d4e81817bb9fd88", size = 29749 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/36/f4/c6e662dade71f56cd2f3735141b265c3c79293c109549c1e6933b0651ffc/exceptiongroup-1.3.0-py3-none-any.whl", hash = "sha256:4d111e6e0c13d0644cad6ddaa7ed0261a0b36971f6d23e7ec9b4b9097da78a10", size = 16674 },
+]
+
+[[package]]
+name = "fastapi"
+version = "0.115.6"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "starlette" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/93/72/d83b98cd106541e8f5e5bfab8ef2974ab45a62e8a6c5b5e6940f26d2ed4b/fastapi-0.115.6.tar.gz", hash = "sha256:9ec46f7addc14ea472958a96aae5b5de65f39721a46aaf5705c480d9a8b76654", size = 301336 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/52/b3/7e4df40e585df024fac2f80d1a2d579c854ac37109675db2b0cc22c0bb9e/fastapi-0.115.6-py3-none-any.whl", hash = "sha256:e9240b29e36fa8f4bb7290316988e90c381e5092e0cbe84e7818cc3713bcf305", size = 94843 },
 ]
 
 [[package]]
@@ -1742,15 +1747,14 @@ wheels = [
 
 [[package]]
 name = "starlette"
-version = "0.47.3"
+version = "0.41.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
-    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/15/b9/cc3017f9a9c9b6e27c5106cc10cc7904653c3eec0729793aec10479dd669/starlette-0.47.3.tar.gz", hash = "sha256:6bc94f839cc176c4858894f1f8908f0ab79dfec1a6b8402f6da9be26ebea52e9", size = 2584144 }
+sdist = { url = "https://files.pythonhosted.org/packages/1a/4c/9b5764bd22eec91c4039ef4c55334e9187085da2d8a2df7bd570869aae18/starlette-0.41.3.tar.gz", hash = "sha256:0e4ab3d16522a255be6b28260b938eae2482f98ce5cc934cb08dce8dc3ba5835", size = 2574159 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ce/fd/901cfa59aaa5b30a99e16876f11abe38b59a1a2c51ffb3d7142bb6089069/starlette-0.47.3-py3-none-any.whl", hash = "sha256:89c0778ca62a76b826101e7c709e70680a1699ca7da6b44d38eb0a7e61fe4b51", size = 72991 },
+    { url = "https://files.pythonhosted.org/packages/96/00/2b325970b3060c7cecebab6d295afe763365822b1306a12eeab198f74323/starlette-0.41.3-py3-none-any.whl", hash = "sha256:44cedb2b7c77a9de33a8b74b2b90e9f50d11fcf25d8270ea525ad71a25374ff7", size = 73225 },
 ]
 
 [[package]]
@@ -1808,11 +1812,13 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
-    { name = "asyncio-throttle" },
     { name = "beautifulsoup4" },
     { name = "elasticsearch" },
+    { name = "fastapi" },
     { name = "fastmcp" },
     { name = "lxml" },
+    { name = "mcp" },
+    { name = "playwright" },
     { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "requests" },
@@ -1846,25 +1852,27 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", specifier = "==3.12.15" },
-    { name = "asyncio-throttle", specifier = "==1.0.2" },
     { name = "beautifulsoup4", specifier = "==4.13.4" },
     { name = "boto3", marker = "extra == 'multiagent'", specifier = ">=1.34.0" },
     { name = "botocore", marker = "extra == 'multiagent'", specifier = ">=1.34.0" },
     { name = "elasticsearch", specifier = "==8.15.1" },
-    { name = "fastmcp", specifier = ">=2.3.0" },
+    { name = "fastapi", specifier = "==0.115.6" },
+    { name = "fastmcp", specifier = "==2.9.2" },
     { name = "lxml", specifier = "==6.0.0" },
+    { name = "mcp", specifier = "==1.9.4" },
+    { name = "playwright", specifier = "==1.40.0" },
     { name = "playwright", marker = "extra == 'dev'", specifier = "==1.40.0" },
     { name = "pydantic", specifier = "==2.11.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = "==7.4.3" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = "==0.23.4" },
     { name = "pytest-playwright", marker = "extra == 'dev'", specifier = "==0.7.0" },
-    { name = "python-dotenv", specifier = ">=1.1.0" },
+    { name = "python-dotenv", specifier = "==1.1.1" },
     { name = "requests", specifier = "==2.32.4" },
     { name = "strands-agents", marker = "extra == 'multiagent'", specifier = ">=1.1.0" },
     { name = "strands-agents-tools", marker = "extra == 'multiagent'", specifier = ">=0.2.1" },
     { name = "structlog", specifier = "==24.1.0" },
-    { name = "tenacity", specifier = ">=8.4.2" },
-    { name = "uvicorn", specifier = ">=0.30.0" },
+    { name = "tenacity", specifier = "==9.1.2" },
+    { name = "uvicorn", specifier = "==0.35.0" },
 ]
 
 [package.metadata.requires-dev]
