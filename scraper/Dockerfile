@@ -48,9 +48,9 @@ RUN apt-get update && apt-get install -y \
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.cargo/bin:$PATH"
 
-# Copy project files
+# Copy project files (when Railway builds from /scraper root directory)
 COPY pyproject.toml uv.lock ./
-COPY scraper/ ./scraper/
+COPY . ./scraper/
 
 # Install dependencies with UV
 RUN uv sync

@@ -13,7 +13,7 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.cargo/bin:$PATH"
 
 # Copy project files (when building from /mcp_server root directory)
-COPY ../pyproject.toml ../uv.lock ./
+COPY pyproject.toml uv.lock ./
 COPY . ./
 
 # Install dependencies with UV
