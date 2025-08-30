@@ -13,7 +13,7 @@ RUN pip install uv
 
 # Copy project files (when building from /mcp_server root directory)
 COPY pyproject.toml uv.lock ./
-COPY . ./
+COPY . ./mcp_server/
 
 # Install dependencies with UV
 RUN uv sync
