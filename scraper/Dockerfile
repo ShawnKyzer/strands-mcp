@@ -44,22 +44,21 @@ RUN apt-get update && apt-get install -y \
     xdg-utils \
     && rm -rf /var/lib/apt/lists/*
 
-# Install UV
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.cargo/bin:$PATH"
+# Install UV using pip for better reliability
+RUN pip install uv
 
 # Copy project files (when Railway builds from /scraper root directory)
 COPY pyproject.toml uv.lock ./
 COPY . ./scraper/
 
-# Install dependencies with UV (using full path to ensure it's found)
-RUN /root/.cargo/bin/uv sync
+# Install dependencies with UV
+RUN uv sync
 
 # Install Playwright browsers in the UV environment
-RUN /root/.cargo/bin/uv run playwright install chromium
+RUN uv run playwright install chromium
 
 # Set environment variable for Elasticsearch URL
 ENV ELASTICSEARCH_URL=http://elasticsearch:9200
 
-# Run scraper with UV (using full path)
-CMD ["/root/.cargo/bin/uv", "run", "scraper"]
+# Run scraper with UV
+CMD ["uv", "run", "scraper"]
