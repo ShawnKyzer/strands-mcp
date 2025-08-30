@@ -49,6 +49,7 @@ RUN pip install uv
 # Copy project files (when Railway builds from /scraper root directory)
 COPY pyproject.toml uv.lock ./
 COPY . ./scraper/
+COPY README.md ./
 
 # Install dependencies with UV
 RUN uv sync
