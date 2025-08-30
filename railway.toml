@@ -1,10 +1,20 @@
 [build]
-builder = "NIXPACKS"
-nixpacksPlan = { phases = { install = { dependsOn = ["setup"], cmds = ["curl -LsSf https://astral.sh/uv/install.sh | sh", "uv sync"] } } }
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile.elasticsearch"
 
 [deploy]
-startCommand = "uv run fastmcp-server"
 restartPolicyType = "on_failure"
+healthcheckPath = "/_cluster/health"
+healthcheckTimeout = 300
+startCommand = ""
 
 [env]
-ELASTICSEARCH_URL = "http://${{elasticsearch.RAILWAY_PRIVATE_DOMAIN}}:9200"
+discovery.type = "single-node"
+xpack.security.enabled = "false"
+ES_JAVA_OPTS = "-Xms512m -Xmx512m"
+cluster.name = "railway-elasticsearch"
+network.host = "0.0.0.0"
+http.port = "9200"
+
+[volumes]
+data = "/usr/share/elasticsearch/data"
