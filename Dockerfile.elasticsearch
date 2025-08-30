@@ -3,7 +3,7 @@ FROM docker.elastic.co/elasticsearch/elasticsearch:8.11.1
 # Configure Elasticsearch for Railway - use environment variables
 ENV discovery.type=single-node
 ENV xpack.security.enabled=false
-ENV ES_JAVA_OPTS="-Xms256m -Xmx256m"
+ENV ES_JAVA_OPTS="-Xms1g -Xmx2g"
 ENV cluster.name=railway-elasticsearch
 ENV network.host=0.0.0.0
 ENV http.port=9200

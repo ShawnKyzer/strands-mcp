@@ -4,17 +4,13 @@ dockerfilePath = "Dockerfile.elasticsearch"
 
 [deploy]
 restartPolicyType = "on_failure"
-healthcheckPath = "/_cluster/health"
-healthcheckTimeout = 300
-startCommand = ""
 
 [env]
 discovery.type = "single-node"
 xpack.security.enabled = "false"
-ES_JAVA_OPTS = "-Xms512m -Xmx512m"
+ES_JAVA_OPTS = "-Xms1g -Xmx2g"
 cluster.name = "railway-elasticsearch"
 network.host = "0.0.0.0"
 http.port = "9200"
+bootstrap.memory_lock = "false"
 
-[volumes]
-data = "/usr/share/elasticsearch/data"
