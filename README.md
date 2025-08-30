@@ -18,7 +18,31 @@ This project provides an MCP (Model Context Protocol) server that scrapes the St
 
 ## Quick Start
 
-### Option 1: Using Pre-indexed Data (Recommended)
+### Option 1: Using UV (Recommended)
+
+This project now supports [UV](https://github.com/astral-sh/uv) for fast Python package management:
+
+```bash
+# Install UV if not already installed
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Quick start with UV
+./start-uv.sh
+
+# Or run standalone with UV (no Docker for scraper/MCP server)
+./run_standalone_uv.py
+```
+
+**UV Commands:**
+```bash
+uv sync                    # Install/update dependencies
+uv run scraper            # Run scraper directly
+uv run mcp-server         # Run MCP server directly
+uv add <package>          # Add new dependency
+uv remove <package>       # Remove dependency
+```
+
+### Option 2: Using Pre-indexed Data (Docker)
 
 The `docker/` directory contains a Docker Compose setup with pre-indexed Strands documentation:
 
@@ -42,9 +66,9 @@ This setup includes:
 - **Kibana** for data visualization and exploration
 - **Automatic data restoration** from `es-data.tar.gz`
 
-### Option 2: Fresh Setup (Root Directory)
+### Option 3: Traditional Setup (Root Directory)
 
-For a fresh setup without pre-indexed data:
+For a fresh setup without pre-indexed data using traditional Python:
 
 ```bash
 # Start Elasticsearch and Kibana (from root directory)

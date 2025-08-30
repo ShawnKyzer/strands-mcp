@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.1
+    container_name: strands-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - strands-network
+
+  scraper:
+    build:
+      context: .
+      dockerfile: scraper/Dockerfile.uv
+    container_name: strands-scraper-uv
+    environment:
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - DOCS_BASE_URL=https://strandsagents.com/latest/documentation/docs/
+    depends_on:
+      - elasticsearch
+    networks:
+      - strands-network
+    volumes:
+      - ./logs:/app/logs
+
+  mcp-server:
+    build:
+      context: .
+      dockerfile: mcp_server/Dockerfile.uv
+    container_name: strands-mcp-server-uv
+    environment:
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+    ports:
+      - "8000:8000"
+    depends_on:
+      - elasticsearch
+      - scraper
+    networks:
+      - strands-network
+    volumes:
+      - ./logs:/app/logs
+
+volumes:
+  elasticsearch_data:
+
+networks:
+  strands-network:
+    driver: bridge

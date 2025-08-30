@@ -1,0 +1,25 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies and UV
+RUN apt-get update && apt-get install -y \
+    gcc \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && mv /root/.cargo/bin/uv /usr/local/bin/uv
+
+# Copy project files
+COPY pyproject.toml uv.lock ./
+COPY scraper/ ./scraper/
+COPY mcp_server/ ./mcp_server/
+
+# Install dependencies with UV
+RUN uv sync --no-dev
+
+# Create logs directory
+RUN mkdir -p logs
+
+# Run scraper with UV
+CMD ["uv", "run", "scraper"]
