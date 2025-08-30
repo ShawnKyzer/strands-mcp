@@ -1,24 +1,29 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies and UV
 RUN apt-get update && apt-get install -y \
+    curl \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install UV
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.cargo/bin:$PATH"
 
-# Copy MCP server code
-COPY mcp_server/ ./mcp_server/
+# Copy project files (when building from /mcp_server root directory)
+COPY ../pyproject.toml ../uv.lock ./
+COPY . ./
 
-# Create logs directory
-RUN mkdir -p logs
+# Install dependencies with UV
+RUN uv sync
+
+# Set environment variable for Elasticsearch URL
+ENV ELASTICSEARCH_URL=http://elasticsearch:9200
 
 # Expose MCP server port
 EXPOSE 8000
 
-# Run MCP server
-CMD ["python", "-u", "mcp_server/main.py"]
+# Run FastMCP server with UV
+CMD ["uv", "run", "fastmcp-server"]
