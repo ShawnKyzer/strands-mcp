@@ -18,26 +18,35 @@ This project provides an MCP (Model Context Protocol) server that scrapes the St
 
 ## Quick Start
 
-### Option 1: Using UV (Recommended)
+### Option 1: FastMCP Web Server (Recommended)
 
-This project now supports [UV](https://github.com/astral-sh/uv) for fast Python package management:
+This project now supports web-accessible MCP via [FastMCP](https://github.com/jlowin/fastmcp):
 
 ```bash
 # Install UV if not already installed
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# Quick start with UV
-./start-uv.sh
+# Start Elasticsearch
+docker-compose up -d elasticsearch
 
-# Or run standalone with UV (no Docker for scraper/MCP server)
-./run_standalone_uv.py
+# Run scraper to populate data
+uv run scraper
+
+# Start web-accessible MCP server
+uv run fastmcp-server
 ```
+
+**Server Access:**
+- **MCP Endpoint**: `http://localhost:8000/mcp/`
+- **For AI Clients**: Connect any MCP-compatible client
+- **For Developers**: Use FastMCP Client library
 
 **UV Commands:**
 ```bash
 uv sync                    # Install/update dependencies
 uv run scraper            # Run scraper directly
-uv run mcp-server         # Run MCP server directly
+uv run fastmcp-server     # Run web MCP server
+uv run mcp-server         # Run local MCP server (stdin/stdout)
 uv add <package>          # Add new dependency
 uv remove <package>       # Remove dependency
 ```
