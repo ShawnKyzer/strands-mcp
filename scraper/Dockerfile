@@ -1,12 +1,11 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install system dependencies required for Playwright
+# Install system dependencies and UV
 RUN apt-get update && apt-get install -y \
-    # Basic build tools
+    curl \
     gcc \
-    # Playwright dependencies
     wget \
     ca-certificates \
     fonts-liberation \
@@ -45,18 +44,22 @@ RUN apt-get update && apt-get install -y \
     xdg-utils \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install UV
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.cargo/bin:$PATH"
 
-# Install Playwright browsers
-RUN playwright install chromium
-
-# Copy scraper code
+# Copy project files
+COPY pyproject.toml uv.lock ./
 COPY scraper/ ./scraper/
 
-# Create logs directory
-RUN mkdir -p logs
+# Install dependencies with UV
+RUN uv sync
 
-# Run scraper
-CMD ["python", "-u", "scraper/main.py"]
+# Install Playwright browsers in the UV environment
+RUN uv run playwright install chromium
+
+# Set environment variable for Elasticsearch URL
+ENV ELASTICSEARCH_URL=http://elasticsearch:9200
+
+# Run scraper with UV
+CMD ["uv", "run", "scraper"]
