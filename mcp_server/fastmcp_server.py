@@ -305,9 +305,12 @@ async def create_server():
     return server.mcp
 
 def main():
-    """Main entry point for HTTP server."""
-    port = int(os.getenv("PORT", 8000))
-    host = os.getenv("HOST", "0.0.0.0")
+    """Main entry point for the FastMCP server."""
+    # Get configuration from environment
+    elasticsearch_url = os.getenv('ELASTICSEARCH_URL', 'http://localhost:9200')
+    host = os.getenv('HOST', '0.0.0.0')
+    # Railway uses PORT environment variable, default to 8000 for local
+    port = int(os.getenv('PORT', '8000'))
     
     logger.info("Starting Strands FastMCP Server", host=host, port=port)
     

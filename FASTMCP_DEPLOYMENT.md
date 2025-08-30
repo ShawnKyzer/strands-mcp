@@ -67,34 +67,57 @@ async def test_server():
 
 ## Railway Deployment
 
-### Service Configuration
+### Service Configuration Files
 
-**1. Elasticsearch Service**
+**1. Elasticsearch Service** (`railway-elasticsearch.toml`)
+- **Dockerfile**: `Dockerfile.elasticsearch`
 - **Image**: `docker.elastic.co/elasticsearch/elasticsearch:8.11.1`
 - **Environment**:
   ```
   discovery.type=single-node
   xpack.security.enabled=false
   ES_JAVA_OPTS=-Xms512m -Xmx512m
+  cluster.name=railway-elasticsearch
   ```
-- **Volume**: `/usr/share/elasticsearch/data` (10GB)
+- **Volume**: `/usr/share/elasticsearch/data`
+- **Health Check**: `/_cluster/health`
 
-**2. Scraper Service** 
-- **Config**: `scraper-railway.toml`
+**2. Scraper Service** (`scraper-railway.toml`)
 - **Command**: `uv run scraper`
 - **Restart**: `never` (one-time job)
-- **Environment**: `ELASTICSEARCH_URL=${{elasticsearch.RAILWAY_PRIVATE_DOMAIN}}:9200`
+- **Environment**: `ELASTICSEARCH_URL=http://${{elasticsearch.RAILWAY_PRIVATE_DOMAIN}}:9200`
 
-**3. FastMCP Server Service**
-- **Config**: `railway.toml`
+**3. FastMCP Server Service** (`railway.toml`)
 - **Command**: `uv run fastmcp-server`
-- **Port**: Generate domain (public access)
-- **Environment**: `ELASTICSEARCH_URL=${{elasticsearch.RAILWAY_PRIVATE_DOMAIN}}:9200`
+- **Port**: Railway auto-assigns (uses $PORT env var)
+- **Environment**: `ELASTICSEARCH_URL=http://${{elasticsearch.RAILWAY_PRIVATE_DOMAIN}}:9200`
+- **Health Check**: `/mcp/`
 
-### Deployment Order
-1. Deploy Elasticsearch → Wait for healthy
-2. Deploy Scraper → Wait for completion (exits)
-3. Deploy FastMCP Server → Public endpoint ready
+### Deployment Steps
+
+1. **Deploy Elasticsearch Service**:
+   ```bash
+   # Use railway-elasticsearch.toml config
+   railway up --config railway-elasticsearch.toml
+   ```
+   - Wait for health check to pass
+   - Note the service name for private domain
+
+2. **Deploy Scraper Service**:
+   ```bash
+   # Use scraper-railway.toml config  
+   railway up --config scraper-railway.toml
+   ```
+   - Runs once to populate Elasticsearch
+   - Should exit with success after indexing
+
+3. **Deploy FastMCP Server**:
+   ```bash
+   # Use railway.toml config
+   railway up --config railway.toml
+   ```
+   - Public domain will be generated
+   - MCP endpoint: `https://your-domain.railway.app/mcp/`
 
 ## Client Integration
 

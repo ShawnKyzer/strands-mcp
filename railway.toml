@@ -5,3 +5,8 @@ nixpacksPlan = { phases = { install = { dependsOn = ["setup"], cmds = ["curl -Ls
 [deploy]
 startCommand = "uv run fastmcp-server"
 restartPolicyType = "on_failure"
+healthcheckPath = "/mcp/"
+healthcheckTimeout = 60
+
+[env]
+ELASTICSEARCH_URL = "http://${{elasticsearch.RAILWAY_PRIVATE_DOMAIN}}:9200"

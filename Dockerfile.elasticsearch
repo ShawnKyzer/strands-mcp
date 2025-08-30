@@ -1,0 +1,22 @@
+FROM docker.elastic.co/elasticsearch/elasticsearch:8.11.1
+
+# Configure Elasticsearch for Railway
+ENV discovery.type=single-node
+ENV xpack.security.enabled=false
+ENV ES_JAVA_OPTS="-Xms512m -Xmx512m"
+ENV cluster.name=railway-elasticsearch
+ENV network.host=0.0.0.0
+ENV http.port=9200
+
+# Create data directory
+RUN mkdir -p /usr/share/elasticsearch/data && \
+    chown -R elasticsearch:elasticsearch /usr/share/elasticsearch/data
+
+# Expose port
+EXPOSE 9200
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD curl -f http://localhost:9200/_cluster/health || exit 1
+
+USER elasticsearch

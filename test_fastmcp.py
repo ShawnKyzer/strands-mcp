@@ -41,11 +41,18 @@ async def test_fastmcp_server():
                 "max_results": 3
             })
             
-            if search_result.data:
-                print(f"✅ Search returned {len(search_result.data)} results")
-                for i, result in enumerate(search_result.data[:2], 1):
-                    print(f"   {i}. {result.get('title', 'No title')}")
-                    print(f"      Score: {result.get('relevance_score', 'N/A')}")
+            if hasattr(search_result, 'content') and search_result.content:
+                if isinstance(search_result.content, list) and len(search_result.content) > 0:
+                    content = search_result.content[0].text if hasattr(search_result.content[0], 'text') else str(search_result.content[0])
+                else:
+                    content = str(search_result.content)
+                
+                print(f"✅ Search successful - content length: {len(content)}")
+                # Parse the content to see results
+                content_lines = content.split('\n')[:10]
+                for line in content_lines:
+                    if line.strip():
+                        print(f"   {line}")
             else:
                 print("⚠️  Search returned no results (index may be empty)")
             
@@ -65,7 +72,12 @@ async def test_fastmcp_server():
             print("\n📚 Testing resource access...")
             health_resource = await client.read_resource("strands://docs/health")
             print("✅ Health resource:")
-            print(health_resource.content[:200] + "..." if len(health_resource.content) > 200 else health_resource.content)
+            if hasattr(health_resource, 'content'):
+                print(health_resource.content[:200] + "..." if len(health_resource.content) > 200 else health_resource.content)
+            elif isinstance(health_resource, list) and len(health_resource) > 0:
+                print(health_resource[0].content[:200] + "..." if len(health_resource[0].content) > 200 else health_resource[0].content)
+            else:
+                print(f"Resource type: {type(health_resource)}")
             
             print("\n🎉 All tests completed successfully!")
             

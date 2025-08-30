@@ -1,7 +1,11 @@
 [build]
 builder = "NIXPACKS"
+{{ ... }}
 nixpacksPlan = { phases = { install = { dependsOn = ["setup"], cmds = ["curl -LsSf https://astral.sh/uv/install.sh | sh", "uv sync"] } } }
 
 [deploy]
 startCommand = "uv run scraper"
 restartPolicyType = "never"
+
+[env]
+ELASTICSEARCH_URL = "http://${{elasticsearch.RAILWAY_PRIVATE_DOMAIN}}:9200"
