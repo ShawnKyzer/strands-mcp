@@ -6,6 +6,7 @@
   },
   "deploy": {
     "numReplicas": 1,
-    "restartPolicyType": "NEVER"
+    "restartPolicyType": "NEVER",
+    "startCommand": "uv run scraper"
   }
 }

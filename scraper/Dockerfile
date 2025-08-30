@@ -41,15 +41,14 @@ RUN apt-get update && apt-get install -y \
     libxss1 \
     libxtst6 \
     lsb-release \
-    xdg-utils \
-    && rm -rf /var/lib/apt/lists/*
+    xdg-utils 
 
 # Install UV using pip for better reliability
 RUN pip install uv
 
 # Copy project files (when Railway builds from /scraper root directory)
 COPY pyproject.toml uv.lock ./
-COPY . ./scraper/
+COPY . ./
 
 # Install dependencies with UV
 RUN uv sync
@@ -57,8 +56,8 @@ RUN uv sync
 # Install Playwright browsers in the UV environment
 RUN uv run playwright install chromium
 
-# Set environment variable for Elasticsearch URL
-ENV ELASTICSEARCH_URL=http://elasticsearch:9200
+# Set environment variable for Elasticsearch URL (will be overridden by Railway)
+ENV ELASTICSEARCH_URL=http://localhost:9200
 
 # Run scraper with UV
 CMD ["uv", "run", "scraper"]
